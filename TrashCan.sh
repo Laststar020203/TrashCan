@@ -2,47 +2,28 @@
 
 trashCan=""
 
-function getMatchFiles {
+DATA=
+function getData (){ #안에서 gv_data를 찾아줍니다.
 
-        fileName="${1%.*}"
-        fileEx="${1##*.}"
-
-
-        fileList=()
-        gvData=""
-
-        for entry in $(find ${trashCan} -name "${fileName}*" -and -name "*.${fileEx}")
-        do
-                fileList+=("${entry}")
-        done
-
-        return fileList
-
-}
-
-function getData { #안에서 gv_data를 찾아줍니다.
-
-        gv_data="${trashCan}/${1%.*}.txt"
+        local gv_data="${1}"
         if [ -e ${gv_data} ];then
-                DATA=()
-                while read st_d; do
-                        DATA+="${st_d}"
-                done < ${1}
-                return DATA
+                DATA=($(cat ${gv_data}))
         fi
 
 }
 
-function allListShow { #1. 디렉토리 or list or 명령어
+
+
+function showInfo { #1. 디렉토리 or list or 명령어
         for entry in ${@} #$(find /home/gold/test/trashCan) #fileList
         do
-                dataes=getData ${entry}
-                if [ ${dataes[@]} -eq 3 ];then
-                        originName=${dataes[0]}
-                        deleteDate=${dataes[1]}
-                        orginPath=${dataes[2]}
-                        if [ -e ${dataes[3]} ];then
-                                echo "${orginName}      ${deleteDate}   ${orginPath}"
+                getData ${entry}
+                if [ ${#DATA[@]} -eq 4 ];then
+                        local originName=${DATA[0]}
+                        local deleteDate=${DATA[1]}
+                        local orginPath=${DATA[2]}
+                        if [ -e ${DATA[3]} ];then
+                                echo "${originName}    ${deleteDate}    ${orginPath}"
                         else
                                 rm ${entry}
                         fi
@@ -50,17 +31,22 @@ function allListShow { #1. 디렉토리 or list or 명령어
         done
 }
 
+
+
 function restore { #1.gvFile 2.originFileName
         mv "${1}" "${trashCan}/${2}" #이름 바꾸기
-        dataes=getData fileList[0]
-        mv "${trashCan}/${2}" dataes[2] #원위치로 복원
+        getData fileList[0]
+        mv "${trashCan}/${2}" DATA[2] #원위치로 복원
         rm "${trashCan}/${2%.*}.txt"
 }
 
 function destory { #1.gvFile
-        rm "${trashCan}/${1}"
-        rm "${trashCan}/${1%.*}.txt"
+        rm "${1}"
+        local fileName="${1##*/}"a
+        rm "${trashCan}/.${fileName%.*}.txt"
 }
+
+
 
 function deleteRoutin {
         #만약 확장자가 없으면
@@ -68,55 +54,56 @@ function deleteRoutin {
         if [ ! -e ${1} ];then
                         echo "file is not exist"
         else
-                        filePath=$(readlink -e ${1})
-                        file_fullName="$(basename ${filePath})"
-                        fileName="${file_fullName%.*}"
-
-                        if [ [ ${file_fullName} =~ "." ] -eq 1 ];then
+                        local filePath=$(readlink -e ${1})
+                        local file_fullName="$(basename ${filePath})"
+                        local fileName="${file_fullName%.*}"
+                        if [[ ! ${file_fullName} == *"."* ]];then
                                         echo "file don't have extension!"
                         else
-                                        extension="${file_fullName##*.}"
-                                        date=`date +%Y%m%d%H%M`
-                                        newName="${fileName}-${date}"
-                                        newPath="$(dirname ${filepath})/${newName}.${extension}"
+                                        local extension="${file_fullName##*.}"
+                                        local date=`date +%Y%m%d%H%M%s%3N`
+                                        local newName="${fileName}-${date}"
+                                        local newPath="$(dirname ${filePath})/${newName}.${extension}"
                         #       rename -n  ${fileName} ${newName} ${filepath}
-                                        mv $filepath $newPath
+                                        mv $filePath $newPath
                                         mv "${newPath}" "${trashCan}"
-                                        logFile="${trashCan}/.${newName}.txt"
+                                        local logFile="${trashCan}/.${newName}.txt"
                                         touch "${logFile}"
                                         #orginName fileName orginPath
                                         echo "${file_fullName}" >> "${logFile}"
                                         echo "${date}" >> "${logFile}"
                                         echo "${filePath}" >> "${logFile}"
-                                        echo "${newName}.${extension}" >> "${logFile}"
+                                        echo "${trashCan}/${newName}.${extension}" >> "${logFile}"
                         fi
         fi
-        if [ ! -e ${filepath} ];then
+        if [ ! -e ${filePath} ];then
         echo "Delete!"
         else
         echo "Fail :["
         fi
 }
 
+
+
+
 function restoreRoutin {
 
-        fileList=getMatchFiles ${1}
-        gvData=""
+        local fileList=getMatchFiles ${1}
+        local gvData=""
 
         if [ fileList[@] -eq 0 ];then
                 echo "file is not exist"
         elif [ fileList[@] -eq 1 ];then
-
                 restore fileList[0] ${1}
-                gvData=fileList[0]
+                local gvData=fileList[0]
         else
                 echo "Please enter the number to restore from the list"
-                allListShow fileList
+                showInfo fileList
                 echo -e "input : c "
                 read word
                 if [ ${word} -le fileList[@] ];then
                 restore fileList[${word}] ${1}
-                gvData=fileList[${word}]
+                local gvData=fileList[${word}]
                 fi
         fi
 
@@ -128,36 +115,48 @@ function restoreRoutin {
 
 }
 
+
 function clearRoutin {
 
         case ${1} in
         "all")
-                for entry in $(find ${trashCan} -name "*.txt")
+                for entry in $(find "${trashCan}" -not -path ${trashCan})  #선택된 디레토리를 제외함
                 do
                         rm "${entry}"
-                        echo "Clear!"
                 done
+                echo "Clear!"
         ;;
         *)
-                fileList=getMatchFiles ${1}
-                gvData=""
-                if [ fileList[@] -eq 0 ];then
+                getMatchFiles ${1}
+
+                local fileName="${1%.*}"
+                local fileEx="${1##*.}"
+
+                local fileList=($(find ${trashCan} -name "${fileName}*" -and -name "*.${fileEx}"))
+
+
+                local gvData=
+                if [ ${#fileList[@]} -eq 0 ];then
                         echo "File is not exist"
-                elif [ fileList[@] -eq 1 ];then
-                        getData=fileList[0]
-                        destory fileList[0]
+                elif [ ${#fileList[@]} -eq 1 ];then
+                        local gvData=${fileList[0]}
+                        destory ${fileList[0]}
                 else
                         echo "Please enter the number to delete from the list"
-                        allListShow fileList
-                        echo -e "input : c "
+                        for entry in ${fileList[@]}
+                        do
+                                local mapping=${entry##*/}
+                                showInfo "${trashCan}/.${mapping%.*}.txt"
+                        done
+                        echo -e "input : "
                         read word
-                        if [ ${word} -le fileList[@] ];then
-                                gvData=fileList[${word}]
-                                destory fileList[${word}]
+                        if [ ${word} -le ${#fileList[@]} ];then
+                                local gvData=${fileList[ ${word} ] }
+                                destroy ${gvData}
+
                         fi
                 fi
-                           
-                if [ [ -z ${gvData} ] || [ -e ${gvData} ] ];then
+                if [ ! -e ${gvData} ];then
                         echo "Clear!"
                 else
                         echo "Fail :["
@@ -186,7 +185,7 @@ function main {
                         fi
                 ;;
                 "clear")
-                        if [ $# -eq 3];then
+                        if [ $# -eq 2 ];then
                                 clearRoutin "${2}"
                         fi
                 ;;
@@ -196,7 +195,7 @@ function main {
                         fi
                 ;;
                 "ls")
-                        allListShow $(find ${trashCan} -name "*.txt")
+                        showInfo $(find ${trashCan} -name "*.txt")
                 ;;
                 "help")
                 ;;
